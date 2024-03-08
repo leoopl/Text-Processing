@@ -5,9 +5,12 @@ import nltk
 import codecs
 import contractions
 import emoji
+import os
+import unicodedata
 nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('averaged_perceptron_tagger')
+nltk.download('punkt')
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 from nltk.corpus import wordnet
@@ -20,7 +23,9 @@ from chat_abbreviations import chat_words_str
 
 class CleanDATA:
     def __init__(self):
-        self.collections = ['test.comments']
+        self.collections = ['bitcoin-bitcoin.comments']
+        self.folder_path = os.path.join(os.path.dirname(__file__), 'data')
+        self.punctuation_table = str.maketrans('', '', string.punctuation)
 
     # def remove_rarewords(self, text):
     #   """custom function to remove the rare words"""
@@ -75,8 +80,7 @@ class CleanDATA:
         """
         Function that removes all code blocks that have triple backticks ``` before and after the code.
         """
-        result = re.sub(r"```[^```]*```", "", str_input)
-        return re.sub(r"`[^`]*`", "", str_input)
+        return re.sub(r"```.*?```", "", str_input, flags=re.DOTALL)
 
     def remove_stopwords(self, text):
         """
@@ -89,11 +93,11 @@ class CleanDATA:
         """
         Function that removes all punctuation from a text.
         """
-        return text.translate(str.maketrans('', '', string.punctuation))
+        return text.translate(self.punctuation_table)
 
     def convert_emojis(self, text):
         """
-        Function that convert emojis to text. !!!!!!!!!!!!!!!!!
+        Function that convert emojis to text. !!!!!!!!!!!!!!!!! DEPRECATED !!!!!!!!!!!!!!!!!
         """
         for emot in UNICODE_EMOJI_ALIAS:
             text = re.sub(r'('+emot+')', " ".join(UNICODE_EMOJI_ALIAS[emot].replace(",","").replace(":","").split('_')), text)
@@ -105,6 +109,7 @@ class CleanDATA:
         """
         result = codecs.encode(str_input, "utf-8")
         return result.decode("ascii", "ignore")
+
 
     def convert_emoticons(self, text):
         """
@@ -126,8 +131,8 @@ class CleanDATA:
         Function to lemmatize words in a text.
         """
         lemmatizer = WordNetLemmatizer()
-        wordnet_map = {"N":wordnet.NOUN, "V":wordnet.VERB, "J":wordnet.ADJ, "R":wordnet.ADV}
-        pos_tagged_text = nltk.pos_tag(text.split())
+        wordnet_map = {"N": wordnet.NOUN, "V": wordnet.VERB, "J": wordnet.ADJ, "R": wordnet.ADV}
+        pos_tagged_text = nltk.pos_tag(nltk.word_tokenize(text))
         return " ".join([lemmatizer.lemmatize(word, wordnet_map.get(pos[0], wordnet.NOUN)) for word, pos in pos_tagged_text])
 
     def chat_words_conversion(self, text):
@@ -135,57 +140,46 @@ class CleanDATA:
         Function to convert chat abbreviations to a full text.
         """
         chat_words_map_dict = {}
-        chat_words_list = []
+        
         for line in chat_words_str.split("\n"):
-            if line != "":
-                cw = line.split("=")[0]
-                cw_expanded = line.split("=")[1]
-                chat_words_list.append(cw)
-                chat_words_map_dict[cw] = cw_expanded
-        chat_words_list = set(chat_words_list)
+            if line.strip():
+                cw, cw_expanded = line.split("=")
+                chat_words_map_dict[cw.strip()] = cw_expanded.strip()
 
+        chat_words_regex = r"\b(" + "|".join(re.escape(word) for word in chat_words_map_dict.keys()) + r")\b"
+        regex_pattern = re.compile(chat_words_regex)
 
-        new_text = []
-        for w in text.split():
-            if w.upper() in chat_words_list:
-                new_text.append(chat_words_map_dict[w.upper()])
-            else:
-                new_text.append(w)
-        return " ".join(new_text)
+        return regex_pattern.sub(lambda x: chat_words_map_dict[x.group()], text)
 
     def correct_spellings(self, text):
         """
         Function to correct spellings in a text.
         """
         spell = SpellChecker()
-        incorrect_words = spell.unknown(text.split())
-
-        for word in incorrect_words:
-            suggestion = spell.correction(word)
-            if suggestion is not None:
-                text = text.replace(word, suggestion)
-        return text
+        words = text.split()
+        corrected_words = [spell.correction(word) if word in spell else word for word in words]
+        return ' '.join(corrected_words)
 
     def remove_quotes(self, text):
         """
         Function to remove Github quotes, that start with '>' character.
         """
-        filtered_lines = []
-        lines = text.splitlines()
-        for line in lines:
-            if not line.startswith('>'):
-                filtered_lines.append(line)
+        filtered_lines = [line for line in text.splitlines() if not line.startswith('>')]
         return "\n".join(filtered_lines)
 
     def text_processing(self, collections: list):
         """
         Function to process the text in each collection.
         """
+        if not os.path.exists('DataCleanResults'):
+            os.makedirs('DataCleanResults')
+
         for collection in collections:
-            comments_collection = open(collection + '.json', encoding='utf-8')
+            file_path = os.path.join(self.folder_path, collection + '.json')
+            comments_collection = open(file_path, encoding='utf-8')
             data = json.load(comments_collection)
 
-            txt_file = open(collection + '.txt', 'w', encoding='utf-8')
+            txt_file = open(os.path.join('DataCleanResults', collection + '.txt'), 'w', encoding='utf-8')
 
             size = len(data)
             count = 1
@@ -198,7 +192,9 @@ class CleanDATA:
                 text = self.remove_urls(text)
                 # HTML code removal
                 text = self.remove_html(text)
-                # Mentions removal
+                # Codeblocks removal
+                text = self.remove_codeblocks(text)
+                # Commit with only a mention removal
                 text = self.remove_only_mentions(text)
                 # Convert emojis to text
                 text = emoji.demojize(text, delimiters=(" ", " ")).replace('_', ' ')
@@ -208,8 +204,8 @@ class CleanDATA:
                 text = re.sub(r'\w*\d\w*', '', text).strip()
                 # Lower case
                 text = text.lower()
-                # Codeblocks removal
-                text = self.remove_codeblocks(text)
+                # Convert chat word abbreviation
+                text = self.chat_words_conversion(text)
                 # Expand contractions
                 text = contractions.fix(text)
                 # Nonascii characters removal
@@ -218,10 +214,8 @@ class CleanDATA:
                 text = self.remove_punctuation(text)
                 # Stopwords removal
                 # text = self.remove_stopwords(text)
-                # Convert chat word abbreviation
-                text = self.chat_words_conversion(text)
                 # Stemming
-                text = self.stem_words(text)
+                # text = self.stem_words(text)
                 # Lemmatization
                 text = self.lemmatize_words(text)
                 # Correct the spelling of words
