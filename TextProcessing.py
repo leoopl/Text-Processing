@@ -7,6 +7,7 @@ import contractions
 import emoji
 import os
 import unicodedata
+import pandas as pd
 nltk.download('stopwords')
 nltk.download('wordnet')
 nltk.download('averaged_perceptron_tagger')
@@ -15,7 +16,7 @@ from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 from nltk.corpus import wordnet
 from nltk.stem import WordNetLemmatizer
-from spellchecker import SpellChecker
+from autocorrect import Speller
 from emo_unicode import EMOTICONS_EMO
 from emo_unicode import UNICODE_EMOJI_ALIAS
 from chat_abbreviations import chat_words_str
@@ -23,7 +24,7 @@ from chat_abbreviations import chat_words_str
 
 class CleanDATA:
     def __init__(self):
-        self.collections = ['bitcoin-bitcoin.comments']
+        self.collections = ['test.reviews']
         self.folder_path = os.path.join(os.path.dirname(__file__), 'data')
         self.punctuation_table = str.maketrans('', '', string.punctuation)
 
@@ -71,7 +72,7 @@ class CleanDATA:
 
     def remove_only_mentions(self, str_input: str) -> str:
         """
-        Function that removes comments that contain only mentions.
+        Function that removes comments that contain only a mentions.
         """
         result = re.fullmatch(r"^[\s]*@\b[\S]+\b[\s]*$", str_input)
         return "" if result else str_input
@@ -94,14 +95,6 @@ class CleanDATA:
         Function that removes all punctuation from a text.
         """
         return text.translate(self.punctuation_table)
-
-    def convert_emojis(self, text):
-        """
-        Function that convert emojis to text. !!!!!!!!!!!!!!!!! DEPRECATED !!!!!!!!!!!!!!!!!
-        """
-        for emot in UNICODE_EMOJI_ALIAS:
-            text = re.sub(r'('+emot+')', " ".join(UNICODE_EMOJI_ALIAS[emot].replace(",","").replace(":","").split('_')), text)
-        return text
 
     def remove_nonascii_characters(self, str_input: str) -> str:
         """
@@ -155,9 +148,8 @@ class CleanDATA:
         """
         Function to correct spellings in a text.
         """
-        spell = SpellChecker()
-        words = text.split()
-        corrected_words = [spell.correction(word) if word in spell else word for word in words]
+        spell = Speller()
+        corrected_words = [spell(word) for word in text.split()]
         return ' '.join(corrected_words)
 
     def remove_quotes(self, text):
@@ -179,58 +171,59 @@ class CleanDATA:
             comments_collection = open(file_path, encoding='utf-8')
             data = json.load(comments_collection)
 
+            # Create a dataframe from the json file to remove duplicates from the comments
+            df = pd.DataFrame(data)
+            df = df.drop_duplicates(subset=['body'])
+
             txt_file = open(os.path.join('DataCleanResults', collection + '.txt'), 'w', encoding='utf-8')
 
-            size = len(data)
-            count = 1
+            print('Processing comments from ' + collection + '...')
 
+            # Quotes removal
+            df['body'] = df['body'].apply(lambda text: self.remove_quotes(text))
+            # URL removal
+            df['body'] = df['body'].apply(lambda text: self.remove_urls(text))
+            # HTML code removal
+            df['body'] = df['body'].apply(lambda text: self.remove_html(text))
+            # Codeblocks removal
+            df['body'] = df['body'].apply(lambda text: self.remove_codeblocks(text))
+            # Mention removal
+            df['body'] = df['body'].apply(lambda text: re.sub(r'@[\w]+', '', text))
+            # Convert emojis to text
+            df['body'] = df['body'].apply(lambda text: emoji.demojize(text, delimiters=(" ", " ")).replace('_', ' '))
+            # Convert emoticons to text
+            df['body'] = df['body'].apply(lambda text: self.convert_emoticons(text))
+            # Words with numbers removal (PR and issue hash)
+            df['body'] = df['body'].apply(lambda text: re.sub(r'\w*\d\w*', '', text).strip())
+            # Lower case
+            df['body'] = df['body'].apply(lambda text: text.lower())
+            # Convert chat word abbreviation
+            df['body'] = df['body'].apply(lambda text: self.chat_words_conversion(text))
+            # Expand contractions
+            df['body'] = df['body'].apply(lambda text: contractions.fix(text))
+            # Nonascii characters removal
+            df['body'] = df['body'].apply(lambda text: self.remove_nonascii_characters(text))
+            # Punctuation removal
+            df['body'] = df['body'].apply(lambda text: self.remove_punctuation(text))
+            # Lemmatization
+            df['body'] = df['body'].apply(lambda text: self.lemmatize_words(text))
+            # Correct the spelling of words
+            df['body'] = df['body'].apply(lambda text: self.correct_spellings(text))
+            # Break line, multiples space, tab removal
+            df['body'] = df['body'].apply(lambda text: " ".join(text.split()))
+            #     # Stopwords removal
+            #     df['body'] = df['body'].apply(lambda text: self.remove_stopwords(text))
+            #     # Stemming
+            #     df['body'] = df['body'].apply(lambda text: self.stem_words(text))
 
-            for comment in data:
-                # Quotes removal
-                text = self.remove_quotes(comment['body'])
-                # URL removal
-                text = self.remove_urls(text)
-                # HTML code removal
-                text = self.remove_html(text)
-                # Codeblocks removal
-                text = self.remove_codeblocks(text)
-                # Commit with only a mention removal
-                text = self.remove_only_mentions(text)
-                # Convert emojis to text
-                text = emoji.demojize(text, delimiters=(" ", " ")).replace('_', ' ')
-                # Convert emoticons to text
-                text = self.convert_emoticons(text)
-                # Words with numbers removal (PR and issue hash)
-                text = re.sub(r'\w*\d\w*', '', text).strip()
-                # Lower case
-                text = text.lower()
-                # Convert chat word abbreviation
-                text = self.chat_words_conversion(text)
-                # Expand contractions
-                text = contractions.fix(text)
-                # Nonascii characters removal
-                text = self.remove_nonascii_characters(text)
-                # Punctuation removal
-                text = self.remove_punctuation(text)
-                # Stopwords removal
-                # text = self.remove_stopwords(text)
-                # Stemming
-                # text = self.stem_words(text)
-                # Lemmatization
-                text = self.lemmatize_words(text)
-                # Correct the spelling of words
-                text = self.correct_spellings(text)
-                # Break line, multiples space, tab removal
-                text = " ".join(text.split())
+            df = df.drop_duplicates(subset=['body'])
+            size = len(df)
 
-                print(str(count) + '/' + str(size) + ' comments processed')
-                count += 1
-
-                if text == '':
-                    continue
-                
-                txt_file.write(str(comment["id"]) + '\t' + text + '\n')
-
+            for index, row in df.iterrows():
+              if row['body'] == '':
+                continue
+              txt_file.write(str(row["id"]) + '\t' + row['body'] + '\n')
+            print(str(size) + ' comments processed')
             txt_file.close()
 
 
