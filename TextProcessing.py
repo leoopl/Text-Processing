@@ -147,6 +147,8 @@ class CleanDATA:
     def correct_spellings(self, text):
         """
         Function to correct spellings in a text.
+        If speed is important for your use case (e.g. chatbot) you may want to use option 'fast':
+            spell = Speller(fast=True)
         """
         spell = Speller()
         corrected_words = [spell(word) for word in text.split()]
