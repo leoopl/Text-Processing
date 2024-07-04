@@ -148,7 +148,13 @@ class CleanDATA:
 
     def correct_spellings(self, text):
         """
+<<<<<<< HEAD
         Function to correct spellings in a text. spell = Speller(fast=True)
+=======
+        Function to correct spellings in a text.
+        If speed is important for your use case (e.g. chatbot) you may want to use option 'fast':
+            spell = Speller(fast=True)
+>>>>>>> b98f12d0f4442c148a3aa28dac7111ee74c4a8e0
         """
         spell = Speller(fast=True)
         corrected_words = [spell(word) for word in text.split()]
@@ -246,4 +252,8 @@ class CleanDATA:
 
 
 clean_data = CleanDATA()
+<<<<<<< HEAD
 clean_data.comments_count(clean_data.collections)
+=======
+clean_data.text_processing(clean_data.collections)
+>>>>>>> b98f12d0f4442c148a3aa28dac7111ee74c4a8e0
