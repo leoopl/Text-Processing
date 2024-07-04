@@ -1,3 +1,4 @@
+import csv
 import json
 import re
 import string
@@ -24,7 +25,8 @@ from chat_abbreviations import chat_words_str
 
 class CleanDATA:
     def __init__(self):
-        self.collections = ['test.reviews']
+        # self.collections = ['test.comments']
+        self.collections = ['mui-material-ui.comments', 'mui-material-ui.reviews', 'opencv-opencv.comments', 'opencv-opencv.reviews', 'rails-rails.comments', 'rails-rails.reviews', 'symfony-symfony.comments', 'symfony-symfony.reviews', 'tensorflow-tensorflow.comments', 'tensorflow-tensorflow.reviews', 'godotengine-godot.comments', 'godotengine-godot.reviews', 'hashicorp-terraform.comments', 'hashicorp-terraform.reviews', 'microsoft-vscode.comments', 'microsoft-vscode.reviews', 'moby-moby.comments', 'moby-moby.reviews', 'angular-angular.comments', 'angular-angular.reviews', 'bitcoin-bitcoin.comments', 'bitcoin-bitcoin.reviews', 'cockroachdb-cockroach.comments', 'cockroachdb-cockroach.reviews', 'facebook-react.comments', 'facebook-react.reviews']
         self.folder_path = os.path.join(os.path.dirname(__file__), 'data')
         self.punctuation_table = str.maketrans('', '', string.punctuation)
 
@@ -146,9 +148,9 @@ class CleanDATA:
 
     def correct_spellings(self, text):
         """
-        Function to correct spellings in a text.
+        Function to correct spellings in a text. spell = Speller(fast=True)
         """
-        spell = Speller()
+        spell = Speller(fast=True)
         corrected_words = [spell(word) for word in text.split()]
         return ' '.join(corrected_words)
 
@@ -158,13 +160,25 @@ class CleanDATA:
         """
         filtered_lines = [line for line in text.splitlines() if not line.startswith('>')]
         return "\n".join(filtered_lines)
+    
+    def comments_count(self, collections: list):
+        """
+        Function to count the total of comments.
+        """
+        comments_count = 0
+        txt_path = os.path.join(os.path.dirname(__file__), 'NewDataCleanResults')
+        for collection in collections:
+            file_path = os.path.join(txt_path, collection + '.txt')
+            with open(file_path, 'r', encoding='utf-8') as file:
+                comments_count += len(file.readlines())
+        print('Total comments: ' + str(comments_count)) 
 
     def text_processing(self, collections: list):
         """
         Function to process the text in each collection.
         """
-        if not os.path.exists('DataCleanResults'):
-            os.makedirs('DataCleanResults')
+        if not os.path.exists('NewDataCleanResults'):
+            os.makedirs('NewDataCleanResults')
 
         for collection in collections:
             file_path = os.path.join(self.folder_path, collection + '.json')
@@ -175,7 +189,8 @@ class CleanDATA:
             df = pd.DataFrame(data)
             df = df.drop_duplicates(subset=['body'])
 
-            txt_file = open(os.path.join('DataCleanResults', collection + '.txt'), 'w', encoding='utf-8')
+            csv_file = open(os.path.join('NewDataCleanResults', collection + '.csv'), 'w', encoding='utf-8')
+            writer = csv.writer(csv_file)
 
             print('Processing comments from ' + collection + '...')
 
@@ -192,29 +207,31 @@ class CleanDATA:
             # Convert emojis to text
             df['body'] = df['body'].apply(lambda text: emoji.demojize(text, delimiters=(" ", " ")).replace('_', ' '))
             # Convert emoticons to text
-            df['body'] = df['body'].apply(lambda text: self.convert_emoticons(text))
+            # df['body'] = df['body'].apply(lambda text: self.convert_emoticons(text))
             # Words with numbers removal (PR and issue hash)
             df['body'] = df['body'].apply(lambda text: re.sub(r'\w*\d\w*', '', text).strip())
             # Lower case
-            df['body'] = df['body'].apply(lambda text: text.lower())
+            # df['body'] = df['body'].apply(lambda text: text.lower())
             # Convert chat word abbreviation
             df['body'] = df['body'].apply(lambda text: self.chat_words_conversion(text))
             # Expand contractions
             df['body'] = df['body'].apply(lambda text: contractions.fix(text))
             # Nonascii characters removal
-            df['body'] = df['body'].apply(lambda text: self.remove_nonascii_characters(text))
+            # df['body'] = df['body'].apply(lambda text: self.remove_nonascii_characters(text))
             # Punctuation removal
-            df['body'] = df['body'].apply(lambda text: self.remove_punctuation(text))
+            # df['body'] = df['body'].apply(lambda text: self.remove_punctuation(text))
             # Lemmatization
-            df['body'] = df['body'].apply(lambda text: self.lemmatize_words(text))
+            # df['body'] = df['body'].apply(lambda text: self.lemmatize_words(text))
             # Correct the spelling of words
-            df['body'] = df['body'].apply(lambda text: self.correct_spellings(text))
+            # df['body'] = df['body'].apply(lambda text: self.correct_spellings(text))
             # Break line, multiples space, tab removal
             df['body'] = df['body'].apply(lambda text: " ".join(text.split()))
             #     # Stopwords removal
             #     df['body'] = df['body'].apply(lambda text: self.remove_stopwords(text))
             #     # Stemming
             #     df['body'] = df['body'].apply(lambda text: self.stem_words(text))
+            # Remove comments without letters
+            df = df[df['body'].apply(lambda s: bool(re.search(r'[a-zA-Z]', s)))]
 
             df = df.drop_duplicates(subset=['body'])
             size = len(df)
@@ -222,10 +239,11 @@ class CleanDATA:
             for index, row in df.iterrows():
               if row['body'] == '':
                 continue
-              txt_file.write(str(row["id"]) + '\t' + row['body'] + '\n')
+              writer.writerow([str(row["id"]) + '\t' + row['body']])
+            #   txt_file.write(str(row["id"]) + '\t' + row['body'] + '\n')
             print(str(size) + ' comments processed')
-            txt_file.close()
+            # txt_file.close()
 
 
 clean_data = CleanDATA()
-clean_data.text_processing(clean_data.collections)
+clean_data.comments_count(clean_data.collections)
